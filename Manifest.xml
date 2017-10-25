@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+  <plugin name="ExecucaoAcordoObservacao" label="Observação do Item da Execução do Contrato" plugin-version="1.0" ecidade-version="2.3.47" id-modulo="8251">
+   <id id="ExecucaoAcordoObservacao"> </id>
+   <files>
+      <file name="ExecucaoAcordoObservacao.xml"                 path="/modification/xml/ExecucaoAcordoObservacao.xml" />
+      <file name="AcordoItemExecucaoRelatorioHTML.model.php"    path="/model/AcordoItemExecucaoRelatorioHTML.model.php" />
+      <file name="con2_acordoitemexecucao002.php"               path="/con2_acordoitemexecucao002.php" />
+   </files>
+  </plugin>
+</manifest>

@@ -1,0 +1,414 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<modification>
+  <name>ExecucaoAcordoObservacao</name>
+  <id>ExecucaoAcordoObservacao</id>
+  <ecidade-version>2.3.47</ecidade-version>
+  
+  <file path='model/Acordo.model.php'>
+    <operation>
+      <search><![CDATA[public function getAnulacoes() {]]></search>
+      <add position="before">
+        <![CDATA[
+  /*
+   * inicio plugin ExecucaoAcordoObservacao
+   */      
+  public function getItensAcordoExecucao($iAutoriza) {
+  	
+  	$sCampos         = "ac20_ordem, ";
+  	$sCampos        .= "ac20_resumo, ";
+  	$sCampos        .= "sum(case when ac26_acordoposicaotipo <> ".AcordoPosicao::TIPO_REEQUILIBRIO." then ac20_quantidade else 0 end) as quantidade, ";
+  	$sCampos        .= "sum(ac20_valortotal) as valortotal, ";
+  	$sCampos        .= "pc01_descrmater, ";
+  	$sCampos        .= "pc01_codmater, ";
+  	$sCampos        .= "max(ac20_sequencial) as codigo, "; 
+  	$sCampos        .= "max(ac20_acordoposicao) as posicao, ";
+  	$sCampos        .= "m61_codmatunid, "; 
+  	$sCampos        .= "m61_abrev, ";
+  	$sCampos        .= "ac29_sequencial, ";
+  	$sCampos        .= "ac29_quantidade, "; 
+  	$sCampos        .= "ac29_valor, ";
+  	$sCampos        .= "ac29_notafiscal, ";
+  	$sCampos        .= "ac29_observacao, ";
+  	$sCampos        .= "ac29_datainicial, ";
+  	$sCampos        .= "ac29_datafinal";
+  	
+  	$sGroup          = "group by ac20_ordem, ac20_resumo, pc01_descrmater, pc01_codmater, m61_codmatunid, m61_abrev, ac29_sequencial, ac29_quantidade, ac29_valor, ac29_quantidade, ac29_valor, ac29_notafiscal, ac29_observacao, ac29_datainicial, ac29_datafinal";
+  	
+  	$sSqlAutorizacoes  =  " select $sCampos ";
+  	$sSqlAutorizacoes .=  "   from acordoposicao ";
+  	$sSqlAutorizacoes .=  "        inner join acordoitem                           on ac20_acordoposicao = ac26_sequencial ";
+  	$sSqlAutorizacoes .=  "        inner join acordoitemexecutado                  on ac20_sequencial    = ac29_acordoitem ";
+  	$sSqlAutorizacoes .= "          left join pcmater                              on pc01_codmater      = ac20_pcmater    ";
+  	$sSqlAutorizacoes .= "          left join matunid                              on m61_codmatunid     = ac20_matunid    ";
+  	$sSqlAutorizacoes .=  "  where ac26_acordo = {$this->getCodigoAcordo()} $sGroup";
+  	$sSqlAutorizacoes .=  "  order by ac29_acordoitem";
+  	
+  	$rsAutorizacoes    = db_query($sSqlAutorizacoes);
+  	return db_utils::getCollectionByRecord($rsAutorizacoes);
+  }
+  /*
+   * fim plugin ExecucaoAcordoObservacao
+   */
+   
+]]>
+      </add>
+    </operation>
+  </file>
+  
+<file path='model/AcordoItem.model.php'>
+    <operation>
+      <search regex="true"><![CDATA[(\$oExecucao->setNotaFiscal\(.*\);)]]></search>
+      <add>
+        <![CDATA[$1
+      //plugin
+      $oExecucao->setObservacao($oDadosExecucao->ac29_observacao);
+      //
+]]>
+      </add>
+    </operation>
+  </file>  
+  
+  <file path='model/contrato/AcordoItemExecucao.model.php'>
+    <operation>
+      <search regex="true"><![CDATA[(private \$sProcesso;)]]></search>
+      <add>
+        <![CDATA[$1
+  //plugin
+  /**
+   * Observacao
+   * @var string
+   */
+  private $sObservacao;
+
+  /**
+   * @return string
+   */
+  public function getObservacao() {
+  	return $this->sObservacao;
+  }
+  
+  /**
+   * @param string $Observacao
+   */
+  public function setObservacao($sObservacao) {
+  	$this->sObservacao = $sObservacao;
+  }
+  //]]>
+      </add>
+    </operation>
+    <operation>
+      <search regex="true"><![CDATA[(\$oDaoItemExecucao->ac29_observacao\s*=\s*'';)]]></search>
+      <add>
+        <![CDATA[$oDaoItemExecucao->ac29_observacao     = $this->getObservacao();]]>
+      </add>
+    </operation>    
+  </file> 
+  
+  <file path='ac4_acordoconsulta.RPC.php'>
+    <operation>
+      <search><![CDATA[case 'paralisacoesConsulta':]]></search>
+      <add position="before">
+        <![CDATA[
+  /*
+   * inicio plugin ExecucaoAcordoObservacao
+   */      
+  case 'execucoesConsulta':
+  
+  	$oRetorno->dados = array();
+  	$oRetorno->detalhe   = $oParam->detalhe;
+  	
+  	$oAcordo       = AcordoRepository::getByCodigo($oParam->ac16_sequencial);
+  	$aItensAcordo  = $oAcordo->getItensAcordoExecucao();
+  	$aItensRetorno = array();
+  	
+  	foreach ($aItensAcordo as $oItem) {
+  	
+  		$oStdItem                     = new stdClass();
+  		$oStdItem->codigo             = $oItem->ac29_sequencial;
+  		$oStdItem->descricao          = urlencode($oItem->pc01_descrmater);
+  		$oStdItem->unidade            = $oItem->m61_abrev;
+  		$oStdItem->data_inicial       = $oItem->ac29_datainicial;
+  		$oStdItem->data_final         = $oItem->ac29_datafinal;
+  		$oStdItem->quantidade         = $oItem->ac29_quantidade;
+  		$oStdItem->valor              = $oItem->ac29_valor;
+  		$oStdItem->ordem              = $oItem->ac20_ordem;
+  		$oStdItem->observacao         = urlencode(str_replace('\\\n', "<br>", $oItem->ac29_observacao));
+  	    
+  		$oRetorno->dados[]      = $oStdItem;
+  		
+  	}
+  	
+  break;
+  /*
+   * fim plugin ExecucaoAcordoObservacao
+   */
+]]>
+      </add>
+    </operation>
+  </file>
+  
+    <file path='con4_consacordosdetalhes001.php'>
+    <operation>
+      <search><![CDATA[switch(oRetorno.detalhe) {]]></search>
+      <add>
+        <![CDATA[
+            switch(oRetorno.detalhe) {
+            
+             /*
+              * inicio plugin ExecucaoAcordoObservacao
+              */
+              case "execucoes":
+
+            	  var aLinha = new Array();
+                  aLinha[0]  = oDado.ordem;
+                  aLinha[1]  = oDado.descricao.urlDecode();
+                  aLinha[2]  = oDado.observacao.urlDecode().substr(0,21)+'...';
+                  aLinha[3]  = js_formatar(oDado.data_inicial, 'd');
+                  aLinha[4]  = js_formatar(oDado.data_final, 'd');
+                  aLinha[5]  = oDado.unidade;
+                  aLinha[6]  = oDado.quantidade;
+                  aLinha[7]  = js_formatar(oDado.valor, 'f');
+                  aLinha[8]  = '<input type="button" value="Emitir" onclick="js_emiteRelatorioExecucao('+oDado.codigo+')">';
+                  oGrvDetalhes.addRow(aLinha);
+
+                  var oDadosHint           = new Object();
+                  oDadosHint.idLinha   = oGrvDetalhes.aRows[iInd].sId;
+                  oDadosHint.sText     = (oDado.observacao.urlDecode() === ""?"Sem Observações":oDado.observacao.urlDecode());
+                  aDadosHintGrid.push(oDadosHint);
+                  
+              break;
+              /*
+               * fim plugin ExecucaoAcordoObservacao
+               */
+]]>
+      </add>
+    </operation>
+    
+    <operation>
+      <search><![CDATA[switch (detalhe) {]]></search>
+      <add>
+        <![CDATA[
+  switch (detalhe) {
+        
+    /*
+     * inicio plugin ExecucaoAcordoObservacao
+     */
+    case 'execucoes':
+    
+    oGrvDetalhes = new DBGrid('detalhes');
+    oGrvDetalhes.nameInstance = 'oGrvDetalhes';
+    oGrvDetalhes.setCellWidth(new Array('5%', '32%', '15%', '8%', '8%', '8%', '8%', '10%', '8%'));
+    oGrvDetalhes.setCellAlign(new Array("center", "left", "left", "center", "center", "center", "right", "right", "center"));
+    oGrvDetalhes.setHeader(new Array("Ordem","Descrição","Observação","Data Inicial", "Data Final", "Unidade","Quantidade","Valor","Relatório"));
+    
+    oGrvDetalhes.setHeight(230);
+    oGrvDetalhes.show($('grvDetalhes'));
+    oGrvDetalhes.clearAll(true);
+    oGrvDetalhes.renderRows();
+    
+    break;              
+    /*
+     * fim plugin ExecucaoAcordoObservacao
+     */
+]]>
+      </add>
+    </operation>
+    
+    <operation>
+      <search><![CDATA[if (oRetorno.detalhe === 'itens']]></search>
+      <add>
+        <![CDATA[if (oRetorno.detalhe === 'itens' || oRetorno.detalhe === 'execucoes']]>
+      </add>
+    </operation> 
+    
+    <operation>
+      <search><![CDATA[function js_documentoDownload(iCodigoDocumento) {]]></search>
+      <add position="before">
+        <![CDATA[
+/*
+ * inicio plugin ExecucaoAcordoObservacao
+ */        
+function js_emiteRelatorioExecucao(iCodigoExecucao) {
+	
+  window.open('con2_acordoitemexecucao002.php?acordoitemexecucao='+iCodigoExecucao,'','width='+(screen.availWidth-5)+',height='+(screen.availHeight-40)+',scrollbars=1,location=0 ');
+  
+}
+/*
+ * fim plugin ExecucaoAcordoObservacao
+ */        
+]]>
+      </add>
+    </operation>    
+  </file>
+  
+  <file path='con4_consacordos003.php'>
+    <operation>
+      <search regex="true"><![CDATA[<tr>\n*.*Processo:.*\n*.*\n*.*<\/tr>]]></search>
+      <add>
+        <![CDATA[]]>
+      </add>
+    </operation>
+    
+    <operation>
+      <search regex="true"><![CDATA[(<tr>\n*.*\n*.*Contratado:)]]></search>
+      <add>
+        <![CDATA[      
+    <?
+      $oDaoAcordoEvento = db_utils::getDao("acordoevento");
+      $sWhereAcordoEvento = "ac55_acordo = {$oGet->ac16_sequencial} and ac55_tipoevento = 6";
+      $rsAcordoEvento = $oDaoAcordoEvento->sql_record($oDaoAcordoEvento->sql_query_file(null, "ac55_data", "ac55_sequencial limit 1", $sWhereAcordoEvento));
+      $iNumRowsPublicacaoDiarioMunicipio = $oDaoAcordoEvento->numrows;
+      
+      	$dDataEvento = db_formatar(db_utils::fieldsMemory($rsAcordoEvento, 0)->ac55_data, 'd');
+      
+      	echo "<tr>
+      	        <td class=\"tdWidth\"><b>Processo:</b></td>
+      	        <td class=\"tdBgColor\">{$clAcordo->getProcesso()}</td>
+      	        <td class=\"tdWidth\"><b>Data de Publicação:</b></td>
+      	        <td class=\"tdBgColor\">{$dDataEvento}</td>
+      	      </tr>";
+      	
+      ?>
+      
+      $1]]>
+      </add>
+    </operation>    
+      
+    <operation>
+      <search><![CDATA[$oTabDetalhes->show();]]></search>
+      <add position="before">
+        <![CDATA[
+/*
+ * inicio plugin ExecucaoAcordoObservacao
+ */         
+$oTabDetalhes->add("execucao" , "Execuções" ,
+                       "con4_consacordosdetalhes001.php?ac16_sequencial={$oGet->ac16_sequencial}&exec=execucoes");
+/*
+ * fim plugin ExecucaoAcordoObservacao
+ */                        
+]]>
+      </add>
+    </operation>
+  </file>
+  
+  <file path='aco4_acordoexecucao.RPC.php'>
+    <operation>  
+      <search regex="true"><![CDATA[(\$oExecucao->setProcesso\(.*\);)]]></search>
+      <add>
+        <![CDATA[$1
+      //plugin
+      $oExecucao->setObservacao(db_stdClass::normalizeStringJsonEscapeString($oParam->observacao));
+      //]]>
+      </add>
+    </operation>
+    <operation>
+      <search regex="true"><![CDATA[(\$oRetorno->execucoes\[\])]]></search>
+      <add>
+        <![CDATA[$oStdExecucao->observacao      = urlencode($oExecucao->getObservacao());
+        $1]]>
+      </add>
+    </operation>   
+  </file>   
+  
+  <file path='ac04_movimentacaomanual001.php'>
+    <operation>
+      <search regex="true"><![CDATA[(<\/table>\n*\s*<\/fieldset>)]]></search>
+      <add>
+        <![CDATA[
+        <!-- plugin ExecucaoAcordoObservacao -->
+        <tr>
+          <td colspan="4">
+            <fieldset style="width: 96%;">
+              <legend><b> Observações </b></legend>
+               <?
+                db_textarea('observacao', 5, 80, '', true, 'text', '', "")
+               ?>
+            </fieldset>
+          </td>
+        </tr>
+
+$1]]>
+      </add>
+    </operation>
+    
+    <operation>
+      <search regex="true" flag="U"><![CDATA[oGridExecucao.setCellAlign((\n*.*)*)oGridExecucao.aHeaders\[6\].lDisplayed = false;]]></search>
+      <add>
+        <![CDATA[
+  oGridExecucao.setCellAlign(['center', 'center', 'right', 'right', 'center', 'left', 'left', 'left']);
+  oGridExecucao.setCellWidth(['20%', '20%', '20%', '20%', '20%', '0%', '0%', '0%']);
+  oGridExecucao.setHeader(['Data Inicial', 'Data Final', 'Quantidade', 'Valor', 'Ação', 'NotaFiscal', 'Processo', 'Observacao']);
+  
+  oGridExecucao.aHeaders[5].lDisplayed = false;
+  oGridExecucao.aHeaders[6].lDisplayed = false;
+  oGridExecucao.aHeaders[7].lDisplayed = false;
+]]>
+      </add>
+    </operation> 
+    
+    <operation>
+      <search><![CDATA[oExecucao.processo.urlDecode()]]></search>
+      <add position="after">
+        <![CDATA[, 
+              oExecucao.observacao.urlDecode()]]>
+      </add>
+    </operation> 
+    
+    <operation>
+      <search><![CDATA[$('numero_processo').value = oRow.aCells[6].getValue().trim();]]></search>
+      <add position="after">
+        <![CDATA[
+   $('observacao').value      = oRow.aCells[7].getValue().trim();]]>
+      </add>
+    </operation> 
+
+    <operation>
+      <search><![CDATA[processo        : encodeURIComponent(tagString($F('numero_processo')))]]></search>
+      <add position="after">
+        <![CDATA[, 
+      observacao      : encodeURIComponent(tagString($F('observacao')))]]>
+      </add>
+    </operation>  
+    
+    <operation>
+      <search regex="true"><![CDATA[limparCamposWindow\(false\);\n*.*carregarExecucoes\(\);]]></search>
+      <add>
+        <![CDATA[emiteRelatorioExecucao(oRetorno.codigo_execucao);
+        limparCamposWindow(false);
+        carregarExecucoes();
+]]>
+      </add>
+    </operation>     
+    
+    <operation>
+      <search><![CDATA[function validarFormulario() {]]></search>
+      <add position="before">
+        <![CDATA[
+  function emiteRelatorioExecucao(iCodigoExecucao) {
+     window.open('con2_acordoitemexecucao002.php?acordoitemexecucao='+iCodigoExecucao,'','width='+(screen.availWidth-5)+',height='+(screen.availHeight-40)+',scrollbars=1,location=0 ');
+  }
+  
+]]>
+      </add>
+    </operation>    
+    
+    <operation>
+      <search><![CDATA[$('numero_processo').value = '';]]></search>
+      <add position="after">
+        <![CDATA[
+    $('observacao').value      = '';
+]]>
+      </add>
+    </operation>        
+  </file>   
+
+  <file path='con4_consacordosdetalhecomissao001.php'>
+    <operation>
+      <search><![CDATA[aLinha[3] = sResponsabilidade;]]></search>
+      <add>
+        <![CDATA[aLinha[3] = oMembro.sResponsabilidade.urlDecode();]]>
+      </add>
+    </operation>        
+  </file>
+      
+</modification>
